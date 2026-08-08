@@ -20,20 +20,20 @@ import TerminalConfirmDialog from "./components/ui/TerminalConfirmDialog";
 
 export default function App() {
   const { isFirstRun, setFirstRun } = useAppStore();
-  const { theme } = useSettingsStore();
+  // Use a selector so the component re-renders when theme changes
+  const theme = useSettingsStore((s) => s.interface.theme);
   const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
-    // Apply theme
     const root = document.documentElement;
     root.classList.remove("dark", "light");
-    root.classList.add(theme === "dark" || theme === "system" ? "dark" : "light");
+    root.classList.add(theme === "light" ? "light" : "dark");
   }, [theme]);
 
   useEffect(() => {
-    initDatabase().then(() => {
-      setDbReady(true);
-    }).catch(console.error);
+    initDatabase()
+      .then(() => setDbReady(true))
+      .catch(() => setDbReady(true)); // fallback: proceed even if DB fails
   }, []);
 
   if (!dbReady) {
@@ -49,7 +49,7 @@ export default function App() {
 
   return (
     <HashRouter>
-      <div className={theme === "dark" || theme === "system" ? "dark" : ""}>
+      <div className={theme === "light" ? "" : "dark"}>
         {isFirstRun ? (
           <WelcomeScreen onComplete={() => setFirstRun(false)} />
         ) : (
@@ -73,7 +73,6 @@ export default function App() {
         <Toaster
           position="bottom-right"
           toastOptions={{
-            className: "bg-surface-3 text-zinc-100 border border-border-1",
             duration: 3000,
             style: {
               background: "#242427",

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { MessageSquare, Plus } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ChatInput from "../components/chat/ChatInput";
 import MessageBubble from "../components/chat/MessageBubble";
@@ -21,12 +21,18 @@ export default function ChatPage() {
   const navigate = useNavigate();
 
   const {
-    conversations, messages, addConversation, updateConversation,
-    addMessage, updateMessage, deleteMessage, getMessages, setStreamingMessageId,
+    conversations,
+    addConversation,
+    updateConversation,
+    addMessage,
+    updateMessage,
+    deleteMessage,
+    getMessages,
+    setStreamingMessageId,
     appendStreamChunk,
   } = useChatStore();
 
-  const { ai: aiSettings, security } = useSettingsStore();
+  const { ai: aiSettings } = useSettingsStore();
   const { setActiveConversationId } = useAppStore();
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -35,7 +41,6 @@ export default function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const conversation = conversations.find((c) => c.id === convId);
   const convMessages = convId ? getMessages(convId) : [];
 
   useEffect(() => {
@@ -46,7 +51,7 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [convMessages]);
 
-  // Auto-create conversation if none
+  // Auto-create conversation if none selected
   useEffect(() => {
     if (!convId) {
       const id = crypto.randomUUID();
@@ -77,7 +82,6 @@ export default function ChatPage() {
         }
         return;
       }
-
       if (isGenerating) return;
 
       const abortController = new AbortController();
@@ -85,13 +89,13 @@ export default function ChatPage() {
       setIsGenerating(true);
       setAgentSteps([]);
 
-      // Build user message content
+      // Build user content (include attached file contents)
       let userContent = text;
       if (attachments.length > 0) {
-        const attachmentTexts = attachments.map(
-          (att) => `\n\n[File: ${att.name}]\n${att.content || "(binary file)"}`
+        const parts = attachments.map(
+          (att) => `\n\n[File: ${att.name}]\n${att.content ?? "(binary file)"}`
         );
-        userContent = text + attachmentTexts.join("");
+        userContent = text + parts.join("");
       }
 
       // Add user message
@@ -105,15 +109,14 @@ export default function ChatPage() {
       };
       addMessage(userMsg);
 
-      // Auto-generate title on first message
+      // Auto-title on first message
       if (convMessages.length === 0) {
-        const title = text.slice(0, 60).trim() || "New Chat";
-        updateConversation(convId, { title });
+        updateConversation(convId, { title: text.slice(0, 60).trim() || "New Chat" });
       }
 
-      // Prepare assistant message placeholder
+      // Placeholder assistant message
       const assistantMsgId = crypto.randomUUID();
-      const assistantMsg: Message = {
+      addMessage({
         id: assistantMsgId,
         conversationId: convId,
         role: "assistant",
@@ -121,15 +124,13 @@ export default function ChatPage() {
         model: aiSettings.defaultModel,
         isStreaming: true,
         createdAt: new Date().toISOString(),
-      };
-      addMessage(assistantMsg);
+      });
       setStreamingMessageId(assistantMsgId);
 
       const startTime = Date.now();
 
       try {
         if (useAgent) {
-          // Agent mode
           setAgentStatus("planning");
           const history = convMessages.slice(-10).map((m) => ({
             role: m.role,
@@ -141,21 +142,21 @@ export default function ChatPage() {
             history,
             { model: aiSettings.defaultModel, maxSteps: 10 },
             {
-              onStep: (step) => setAgentSteps((prev) => {
-                const idx = prev.findIndex((s) => s.id === step.id);
-                if (idx >= 0) {
-                  const updated = [...prev];
-                  updated[idx] = step;
-                  return updated;
-                }
-                return [...prev, step];
-              }),
+              onStep: (step) =>
+                setAgentSteps((prev) => {
+                  const idx = prev.findIndex((s) => s.id === step.id);
+                  if (idx >= 0) {
+                    const next = [...prev];
+                    next[idx] = step;
+                    return next;
+                  }
+                  return [...prev, step];
+                }),
               onChunk: (chunk) => appendStreamChunk(convId, assistantMsgId, chunk),
-              onDone: (finalResponse) => {
-                const duration = Date.now() - startTime;
+              onDone: () => {
                 updateMessage(convId, assistantMsgId, {
                   isStreaming: false,
-                  durationMs: duration,
+                  durationMs: Date.now() - startTime,
                 });
               },
               onError: (err) => {
@@ -170,41 +171,35 @@ export default function ChatPage() {
             abortController.signal
           );
         } else {
-          // Regular chat mode (with optional web search)
+          // Regular chat with optional web search
           let contextAddition = "";
           let sources: SearchSource[] = [];
 
           if (useSearch || shouldSearchWeb(text)) {
             try {
-              updateMessage(convId, assistantMsgId, {
-                content: t("chat.searching"),
-              });
+              updateMessage(convId, assistantMsgId, { content: t("chat.searching") });
               const searchResult = await searchWeb(text);
               sources = searchResult.results;
               contextAddition = formatSourcesForContext(searchResult.results);
-            } catch (e) {
-              console.error("Search failed:", e);
+            } catch {
+              // Search failed — proceed without context
             }
           }
 
-          // Add memory context
           const memoryCtx = getMemoryContext(convId);
           const systemPrompt = aiSettings.systemPrompt + memoryCtx;
 
-          // Build message history
           const history = convMessages.slice(-20).map((m) => ({
             role: m.role === "tool" ? "user" : m.role,
             content: m.content,
           }));
 
-          const promptWithContext = userContent + contextAddition;
-
-          // Reset content before streaming
+          // Clear placeholder before streaming
           updateMessage(convId, assistantMsgId, { content: "" });
 
           await chatStream(
             aiSettings.defaultModel,
-            [...history, { role: "user", content: promptWithContext }],
+            [...history, { role: "user", content: userContent + contextAddition }],
             {
               temperature: aiSettings.temperature,
               topP: aiSettings.topP,
@@ -214,16 +209,14 @@ export default function ChatPage() {
             {
               onChunk: (chunk) => appendStreamChunk(convId, assistantMsgId, chunk),
               onDone: ({ evalCount }) => {
-                const duration = Date.now() - startTime;
                 updateMessage(convId, assistantMsgId, {
                   isStreaming: false,
-                  durationMs: duration,
+                  durationMs: Date.now() - startTime,
                   tokensUsed: evalCount,
                   sources: sources.length > 0 ? sources : undefined,
                 });
-
-                // Extract memories
-                const finalContent = getMessages(convId).find((m) => m.id === assistantMsgId)?.content || "";
+                const finalContent =
+                  getMessages(convId).find((m) => m.id === assistantMsgId)?.content ?? "";
                 extractMemoriesFromConversation(userContent, finalContent, convId);
               },
               onError: (err) => {
@@ -239,7 +232,7 @@ export default function ChatPage() {
         }
       } catch (e) {
         updateMessage(convId, assistantMsgId, {
-          content: `Unexpected error: ${e}`,
+          content: `Unexpected error: ${String(e)}`,
           isStreaming: false,
           isError: true,
         });
@@ -262,20 +255,18 @@ export default function ChatPage() {
 
   const handleRegenerate = async () => {
     if (!convId || convMessages.length < 1) return;
-    const lastUserMsg = [...convMessages].reverse().find((m) => m.role === "user");
-    if (!lastUserMsg) return;
-    // Remove last assistant message
+    const lastUser = [...convMessages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
     const lastAssistant = [...convMessages].reverse().find((m) => m.role === "assistant");
     if (lastAssistant) deleteMessage(convId, lastAssistant.id);
-    await handleSend(lastUserMsg.content, lastUserMsg.attachments || [], false, false);
+    await handleSend(lastUser.content, lastUser.attachments ?? [], false, false);
   };
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto py-4">
         {convMessages.length === 0 ? (
-          <EmptyState t={t} onSend={handleSend} />
+          <EmptyState onSend={handleSend} />
         ) : (
           <>
             {convMessages.map((msg, idx) => (
@@ -294,7 +285,6 @@ export default function ChatPage() {
                 }
               />
             ))}
-            {/* Agent steps */}
             {agentSteps.length > 0 && (
               <AgentStepsPanel
                 steps={agentSteps}
@@ -307,7 +297,6 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Input */}
       <ChatInput
         onSend={handleSend}
         onStop={handleStop}
@@ -318,13 +307,20 @@ export default function ChatPage() {
   );
 }
 
-function EmptyState({
-  t,
-  onSend,
-}: {
-  t: (key: string) => string;
-  onSend: (text: string, attachments: [], useSearch: boolean, useAgent: boolean) => void;
-}) {
+// ── Empty state ────────────────────────────────────────────────────────────────
+
+interface EmptyStateProps {
+  onSend: (
+    text: string,
+    attachments: Attachment[],
+    useSearch: boolean,
+    useAgent: boolean
+  ) => void;
+}
+
+function EmptyState({ onSend }: EmptyStateProps) {
+  const { t } = useTranslation();
+
   const suggestions = [
     "What can you help me with?",
     "Analyze this code and suggest improvements",
@@ -345,7 +341,9 @@ function EmptyState({
           <button
             key={s}
             onClick={() => onSend(s, [], false, false)}
-            className="text-left px-4 py-2.5 bg-surface-2 hover:bg-surface-3 border border-border-1 hover:border-border-2 rounded-xl text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            className="text-left px-4 py-2.5 bg-surface-2 hover:bg-surface-3 border border-border-1
+                       hover:border-border-2 rounded-xl text-sm text-zinc-400 hover:text-zinc-200
+                       transition-colors"
           >
             {s}
           </button>

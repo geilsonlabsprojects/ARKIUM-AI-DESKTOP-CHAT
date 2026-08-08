@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { searchWeb, fetchUrlContent } from "./websearch";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useAppStore } from "../stores/appStore";
-import type { ToolDefinition, ToolCall } from "../types";
+import type { ToolDefinition } from "../types";
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -10,7 +10,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description: "Search the internet for current information",
     parameters: {
       query: { type: "string", required: true, description: "Search query" },
-      engine: { type: "string", required: false, description: "Search engine: duckduckgo, brave, searxng" },
+      engine: {
+        type: "string",
+        required: false,
+        description: "Search engine: duckduckgo, brave, searxng",
+      },
     },
     requiresPermission: false,
     riskLevel: "low",
@@ -39,7 +43,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: {
       path: { type: "string", required: true, description: "File path" },
       content: { type: "string", required: true, description: "File content" },
-      create_dirs: { type: "boolean", required: false, description: "Create parent directories" },
+      create_dirs: {
+        type: "boolean",
+        required: false,
+        description: "Create parent directories",
+      },
     },
     requiresPermission: true,
     riskLevel: "medium",
@@ -49,7 +57,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description: "List files and directories",
     parameters: {
       path: { type: "string", required: true, description: "Directory path" },
-      show_hidden: { type: "boolean", required: false, description: "Show hidden files" },
+      show_hidden: {
+        type: "boolean",
+        required: false,
+        description: "Show hidden files",
+      },
     },
     requiresPermission: false,
     riskLevel: "low",
@@ -59,7 +71,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description: "Create a directory",
     parameters: {
       path: { type: "string", required: true, description: "Directory path" },
-      recursive: { type: "boolean", required: false, description: "Create parents" },
+      recursive: {
+        type: "boolean",
+        required: false,
+        description: "Create parents",
+      },
     },
     requiresPermission: true,
     riskLevel: "low",
@@ -113,19 +129,18 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 export async function executeTool(
   name: string,
   input: Record<string, unknown>,
-  conversationId?: string
+  _conversationId?: string
 ): Promise<unknown> {
   const security = useSettingsStore.getState().security;
   const app = useAppStore.getState();
   const toolDef = TOOL_DEFINITIONS.find((t) => t.name === name);
 
-  // Check permissions for dangerous operations
   if (toolDef?.requiresPermission) {
     if (security.readOnlyMode && isWriteOperation(name)) {
-      throw new Error("Read-only mode is enabled. Write operations are not allowed.");
+      throw new Error(
+        "Read-only mode is enabled. Write operations are not allowed."
+      );
     }
-
-    // Request permission from user
     const granted = await requestToolPermission(name, input, toolDef.riskLevel, app);
     if (!granted) {
       throw new Error(`Permission denied for tool: ${name}`);
@@ -134,11 +149,7 @@ export async function executeTool(
 
   switch (name) {
     case "web_search": {
-      const result = await searchWeb(
-        input.query as string,
-        input.engine as string | undefined
-      );
-      return result;
+      return searchWeb(input.query as string, input.engine as string | undefined);
     }
 
     case "web_fetch": {
@@ -160,8 +171,7 @@ export async function executeTool(
 
     case "edit_file": {
       const content = await invoke<string>("read_file_content", { path: input.path });
-      const updated = applyEdit(
-        content,
+      const updated = (content as string).replace(
         input.old_str as string,
         input.new_str as string
       );
@@ -220,32 +230,26 @@ export async function executeTool(
     }
 
     case "terminal": {
-      // Terminal requires separate confirmation dialog
       const confirmed = await requestTerminalConfirm(
         input.command as string,
-        (input.args as string[]) || [],
+        (input.args as string[]) ?? [],
         input.cwd as string | undefined,
         app
       );
-
-      if (!confirmed) {
-        throw new Error("Command execution cancelled by user");
-      }
-
+      if (!confirmed) throw new Error("Command execution cancelled by user");
       return invoke("execute_command", {
         command: input.command,
-        args: input.args || [],
+        args: input.args ?? [],
         cwd: input.cwd,
         timeoutSecs: 60,
       });
     }
 
     case "project_analyzer": {
-      const files = await invoke("list_directory_contents", {
+      return invoke("list_directory_contents", {
         path: input.path,
         showHidden: false,
       });
-      return { files, analysis: "Use the file list to analyze project structure" };
     }
 
     default:
@@ -254,8 +258,15 @@ export async function executeTool(
 }
 
 function isWriteOperation(toolName: string): boolean {
-  return ["write_file", "edit_file", "delete_file", "create_directory",
-          "terminal", "create_zip", "extract_zip"].includes(toolName);
+  return [
+    "write_file",
+    "edit_file",
+    "delete_file",
+    "create_directory",
+    "terminal",
+    "create_zip",
+    "extract_zip",
+  ].includes(toolName);
 }
 
 async function requestToolPermission(
@@ -265,15 +276,14 @@ async function requestToolPermission(
   app: ReturnType<typeof useAppStore.getState>
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const resource = (input.path || input.url || input.command || toolName) as string;
-    const id = crypto.randomUUID();
+    const resource = String(input.path ?? input.url ?? input.command ?? toolName);
     app.pushPermission({
-      id,
+      id: crypto.randomUUID(),
       action: toolName,
-      resource: String(resource),
-      description: `Tool "${toolName}" wants to access: ${String(resource)}`,
+      resource,
+      description: `Tool "${toolName}" wants to access: ${resource}`,
       riskLevel: riskLevel as "low" | "medium" | "high",
-      resolve: (granted, _remember) => resolve(granted),
+      resolve: (granted) => resolve(granted),
     });
   });
 }
@@ -285,9 +295,8 @@ async function requestTerminalConfirm(
   app: ReturnType<typeof useAppStore.getState>
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const id = crypto.randomUUID();
     app.pushTerminalCommand({
-      id,
+      id: crypto.randomUUID(),
       command,
       args,
       cwd,
@@ -295,13 +304,4 @@ async function requestTerminalConfirm(
       resolve: (confirmed) => resolve(confirmed),
     });
   });
-}
-
-function applyEdit(
-  content: string,
-  oldStr: string,
-  newStr: string
-): string {
-  if (!oldStr) return content;
-  return content.replace(oldStr, newStr);
 }

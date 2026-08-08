@@ -4,7 +4,7 @@ let db: Database | null = null;
 
 export async function initDatabase(): Promise<void> {
   try {
-    const dataDir = await appDataDir();
+    // The plugin resolves the app data dir automatically with "sqlite:<name>"
     db = await Database.load("sqlite:arkium.db");
 
     await db.execute(`
@@ -82,13 +82,17 @@ export async function initDatabase(): Promise<void> {
       )
     `);
 
-    await db.execute(`CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)`);
-    await db.execute(`CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at)`);
+    await db.execute(
+      `CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)`
+    );
+    await db.execute(
+      `CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at)`
+    );
 
-    console.log("Database initialized");
+    console.log("Database initialized successfully");
   } catch (error) {
-    console.warn("Database init error (using in-memory fallback):", error);
-    // App continues working with Zustand persist as fallback
+    // App continues with Zustand persist (localStorage) as fallback
+    console.warn("Database init warning (using localStorage fallback):", error);
   }
 }
 
@@ -105,7 +109,10 @@ export async function dbExecute(sql: string, params?: unknown[]): Promise<void> 
   }
 }
 
-export async function dbSelect<T = unknown>(sql: string, params?: unknown[]): Promise<T[]> {
+export async function dbSelect<T = unknown>(
+  sql: string,
+  params?: unknown[]
+): Promise<T[]> {
   if (!db) return [];
   try {
     return await db.select<T>(sql, params);

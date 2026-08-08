@@ -26,7 +26,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   files: {
     workingDirectory: "",
     maxFileSizeMB: 10,
-    allowedExtensions: ["txt", "md", "json", "yaml", "yml", "html", "css", "js", "ts", "tsx", "jsx", "py", "rs", "java", "c", "cpp", "h", "bat", "sh", "ps1", "csv"],
+    allowedExtensions: [
+      "txt", "md", "json", "yaml", "yml", "html", "css", "js", "ts", "tsx",
+      "jsx", "py", "rs", "java", "c", "cpp", "h", "bat", "sh", "ps1", "csv",
+    ],
   },
   security: {
     confirmCommands: true,
@@ -44,6 +47,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 interface SettingsState extends AppSettings {
+  /** Mirrors interface.theme — kept as a plain field so it can be destructured */
   theme: "dark" | "light" | "system";
   updateSettings: (partial: Partial<AppSettings>) => void;
   updateAI: (partial: Partial<AppSettings["ai"]>) => void;
@@ -57,53 +61,42 @@ interface SettingsState extends AppSettings {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...DEFAULT_SETTINGS,
 
-      get theme() {
-        return get().interface.theme;
-      },
+      // Plain field — stays in sync via updateInterface
+      theme: DEFAULT_SETTINGS.interface.theme,
 
-      updateSettings: (partial) =>
-        set((s) => ({
-          ...s,
-          ...partial,
-        })),
+      updateSettings: (partial) => set((s) => ({ ...s, ...partial })),
 
       updateAI: (partial) =>
-        set((s) => ({
-          ai: { ...s.ai, ...partial },
-        })),
+        set((s) => ({ ai: { ...s.ai, ...partial } })),
 
       updateOllama: (partial) =>
-        set((s) => ({
-          ollama: { ...s.ollama, ...partial },
-        })),
+        set((s) => ({ ollama: { ...s.ollama, ...partial } })),
 
       updateSearch: (partial) =>
-        set((s) => ({
-          search: { ...s.search, ...partial },
-        })),
+        set((s) => ({ search: { ...s.search, ...partial } })),
 
       updateFiles: (partial) =>
-        set((s) => ({
-          files: { ...s.files, ...partial },
-        })),
+        set((s) => ({ files: { ...s.files, ...partial } })),
 
       updateSecurity: (partial) =>
-        set((s) => ({
-          security: { ...s.security, ...partial },
-        })),
+        set((s) => ({ security: { ...s.security, ...partial } })),
 
       updateInterface: (partial) =>
-        set((s) => ({
-          interface: { ...s.interface, ...partial },
-        })),
+        set((s) => {
+          const newInterface = { ...s.interface, ...partial };
+          return {
+            interface: newInterface,
+            // Keep top-level theme field in sync
+            theme: newInterface.theme,
+          };
+        }),
 
-      resetToDefaults: () => set(DEFAULT_SETTINGS),
+      resetToDefaults: () =>
+        set({ ...DEFAULT_SETTINGS, theme: DEFAULT_SETTINGS.interface.theme }),
     }),
-    {
-      name: "arkium-settings",
-    }
+    { name: "arkium-settings" }
   )
 );
