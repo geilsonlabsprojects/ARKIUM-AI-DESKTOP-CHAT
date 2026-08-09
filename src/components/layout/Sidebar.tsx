@@ -12,21 +12,21 @@ import { clsx } from "clsx";
 import ConversationList from "../chat/ConversationList";
 
 const navItems = [
-  { to: "/chat", icon: MessageSquare, labelKey: "nav.chat" },
-  { to: "/models", icon: Cpu, labelKey: "nav.models" },
-  { to: "/files", icon: FolderOpen, labelKey: "nav.files" },
-  { to: "/projects", icon: Briefcase, labelKey: "nav.projects" },
-  { to: "/prompts", icon: BookText, labelKey: "nav.prompts" },
-  { to: "/search", icon: Search, labelKey: "nav.search" },
-  { to: "/memory", icon: Brain, labelKey: "nav.memory" },
-  { to: "/logs", icon: ScrollText, labelKey: "nav.logs" },
+  { to: "/chat",     icon: MessageSquare, labelKey: "nav.chat"     },
+  { to: "/models",   icon: Cpu,           labelKey: "nav.models"   },
+  { to: "/files",    icon: FolderOpen,    labelKey: "nav.files"    },
+  { to: "/projects", icon: Briefcase,     labelKey: "nav.projects" },
+  { to: "/prompts",  icon: BookText,      labelKey: "nav.prompts"  },
+  { to: "/search",   icon: Search,        labelKey: "nav.search"   },
+  { to: "/memory",   icon: Brain,         labelKey: "nav.memory"   },
+  { to: "/logs",     icon: ScrollText,    labelKey: "nav.logs"     },
 ];
 
 export default function Sidebar() {
   const { t } = useTranslation();
-  const { sidebarCollapsed, toggleSidebar, ollamaStatus } = useAppStore();
-  const { conversations, addConversation, setActiveConversationId } = useChatStore();
-  const { ai: aiSettings } = useSettingsStore();
+  const { sidebarCollapsed, toggleSidebar, ollamaStatus, setActiveConversationId } = useAppStore();
+  const { addConversation } = useChatStore();
+  const aiDefaultModel = useSettingsStore((s) => s.ai.defaultModel);
   const navigate = useNavigate();
 
   function handleNewChat() {
@@ -35,7 +35,7 @@ export default function Sidebar() {
     addConversation({
       id,
       title: "New Chat",
-      model: aiSettings.defaultModel,
+      model: aiDefaultModel,
       isPinned: false,
       createdAt: now,
       updatedAt: now,
@@ -75,7 +75,7 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* New Chat Button */}
+      {/* New Chat */}
       <div className="px-2 py-2 border-b border-border-1">
         <button
           onClick={handleNewChat}
@@ -92,14 +92,14 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Conversations (only when expanded and on chat route) */}
+      {/* Conversation list */}
       {!sidebarCollapsed && (
         <div className="flex-1 overflow-y-auto py-1">
           <ConversationList />
         </div>
       )}
 
-      {/* Nav Items */}
+      {/* Navigation */}
       <nav className="px-2 py-2 border-t border-border-1 space-y-0.5">
         {navItems.map(({ to, icon: Icon, labelKey }) => (
           <NavLink
@@ -121,7 +121,6 @@ export default function Sidebar() {
           </NavLink>
         ))}
 
-        {/* Settings */}
         <NavLink
           to="/settings"
           className={({ isActive }) =>
@@ -140,14 +139,16 @@ export default function Sidebar() {
         </NavLink>
       </nav>
 
-      {/* Ollama status indicator */}
+      {/* Ollama status */}
       {!sidebarCollapsed && (
         <div className="px-3 py-2 border-t border-border-1">
           <div className="flex items-center gap-2">
             <div
               className={clsx(
                 "w-2 h-2 rounded-full",
-                ollamaStatus?.apiAvailable ? "bg-green-500" : "bg-red-500 animate-pulse"
+                ollamaStatus?.apiAvailable
+                  ? "bg-green-500"
+                  : "bg-red-500 animate-pulse"
               )}
             />
             <span className="text-xs text-zinc-500">

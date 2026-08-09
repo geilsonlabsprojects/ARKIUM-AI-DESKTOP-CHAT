@@ -1,10 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  OllamaModel,
-  OllamaStatus,
-  Message,
-  ChatOptions,
-} from "../types";
+import type { OllamaModel, OllamaStatus, ChatOptions } from "../types";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useAppStore } from "../stores/appStore";
 
@@ -12,19 +7,33 @@ function getApiUrl(): string {
   return useSettingsStore.getState().ollama.apiUrl || "http://localhost:11434";
 }
 
+// Raw response from Tauri (snake_case fields from Rust)
+interface RawOllamaStatus {
+  installed: boolean;
+  running: boolean;
+  api_available?: boolean;
+  apiAvailable?: boolean;
+  api_url?: string;
+  apiUrl?: string;
+  version?: string;
+  models_count?: number;
+  modelsCount?: number;
+  error?: string;
+}
+
 export async function checkOllamaStatus(): Promise<OllamaStatus> {
   try {
-    const result = await invoke<OllamaStatus>("check_ollama_status", {
+    const raw = await invoke<RawOllamaStatus>("check_ollama_status", {
       apiUrl: getApiUrl(),
     });
-    const status = {
-      installed: result.installed,
-      running: result.running,
-      apiAvailable: result.api_available ?? result.apiAvailable,
-      apiUrl: result.api_url ?? result.apiUrl,
-      version: result.version,
-      modelsCount: result.models_count ?? result.modelsCount ?? 0,
-      error: result.error,
+    const status: OllamaStatus = {
+      installed: raw.installed,
+      running: raw.running,
+      apiAvailable: raw.api_available ?? raw.apiAvailable ?? false,
+      apiUrl: raw.api_url ?? raw.apiUrl ?? getApiUrl(),
+      version: raw.version,
+      modelsCount: raw.models_count ?? raw.modelsCount ?? 0,
+      error: raw.error,
     };
     useAppStore.getState().setOllamaStatus(status);
     return status;
@@ -42,14 +51,23 @@ export async function checkOllamaStatus(): Promise<OllamaStatus> {
   }
 }
 
+interface RawOllamaModel {
+  name: string;
+  modified_at?: string;
+  modifiedAt?: string;
+  size: number;
+  digest: string;
+  details?: OllamaModel["details"];
+}
+
 export async function listModels(): Promise<OllamaModel[]> {
   try {
-    const models = await invoke<OllamaModel[]>("list_ollama_models", {
+    const raw = await invoke<RawOllamaModel[]>("list_ollama_models", {
       apiUrl: getApiUrl(),
     });
-    return models.map((m) => ({
+    return raw.map((m) => ({
       name: m.name,
-      modifiedAt: (m as unknown as Record<string, string>).modified_at ?? m.modifiedAt ?? "",
+      modifiedAt: m.modified_at ?? m.modifiedAt ?? "",
       size: m.size,
       digest: m.digest,
       details: m.details,
@@ -79,7 +97,9 @@ export async function deleteModel(modelName: string): Promise<boolean> {
   });
 }
 
-export async function getModelInfo(modelName: string): Promise<Record<string, unknown>> {
+export async function getModelInfo(
+  modelName: string
+): Promise<Record<string, unknown>> {
   return invoke("get_ollama_model_info", {
     modelName,
     apiUrl: getApiUrl(),
@@ -145,7 +165,7 @@ export async function chatStream(
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+      buffer = lines.pop() ?? "";
 
       for (const line of lines) {
         if (!line.trim()) continue;
@@ -162,7 +182,7 @@ export async function chatStream(
             return;
           }
         } catch {
-          // Skip malformed JSON
+          // Skip malformed JSON lines
         }
       }
     }
@@ -187,14 +207,13 @@ export async function generateEmbeddings(
       apiUrl: getApiUrl(),
     });
   } catch {
-    // Fallback: simple TF-IDF-like vector
     return simpleEmbedding(text);
   }
 }
 
 function simpleEmbedding(text: string): number[] {
   const dim = 128;
-  const vec = new Array(dim).fill(0);
+  const vec = new Array<number>(dim).fill(0);
   const words = text.toLowerCase().split(/\W+/);
   for (const word of words) {
     for (let i = 0; i < word.length; i++) {
@@ -202,7 +221,6 @@ function simpleEmbedding(text: string): number[] {
       vec[idx] += 1;
     }
   }
-  // Normalize
   const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
   return vec.map((v) => v / mag);
 }

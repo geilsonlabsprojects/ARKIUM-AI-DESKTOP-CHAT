@@ -33,7 +33,8 @@ export default function PromptsPage() {
     toggleFavorite, incrementUseCount, searchPrompts,
   } = usePromptStore();
 
-  const { addConversation, addMessage, setActiveConversationId } = useChatStore();
+  const { addConversation, addMessage } = useChatStore();
+  const { setActiveConversationId } = useAppStore();
   const { setActiveConversationId: setActiveConv } = useAppStore();
   const { ai: aiSettings } = useSettingsStore();
 

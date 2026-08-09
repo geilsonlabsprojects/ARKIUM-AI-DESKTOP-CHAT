@@ -122,15 +122,24 @@ function AgentStepRow({ step }: { step: AgentStep }) {
           {step.error && (
             <p className="text-xs text-red-400 mt-1">{step.error}</p>
           )}
-          {step.output && !step.error && (
-            <pre className="text-xs text-zinc-500 bg-surface-1 p-2 rounded overflow-x-auto max-h-32 mt-1">
-              {typeof step.output === "string"
-                ? step.output.slice(0, 500)
-                : JSON.stringify(step.output, null, 2).slice(0, 500)}
-            </pre>
+          {step.output != null && !step.error && (
+            <OutputPreview output={step.output} />
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function OutputPreview({ output }: { output: unknown }) {
+  const text =
+    typeof output === "string"
+      ? output
+      : JSON.stringify(output, null, 2);
+  const preview = text.length > 500 ? text.slice(0, 500) + "..." : text;
+  return (
+    <pre className="text-xs text-zinc-400 bg-surface-1 p-2 rounded overflow-x-auto max-h-32 mt-1">
+      {preview}
+    </pre>
   );
 }

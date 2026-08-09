@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use zip::{ZipWriter, ZipArchive};
-use zip::write::FileOptions;
+use zip::write::{FileOptions, ExtendedFileOptions};
 use walkdir::WalkDir;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,7 +48,7 @@ pub async fn create_zip_archive(
 
     let mut zip = ZipWriter::new(file);
     let level = compression_level.unwrap_or(6);
-    let options = FileOptions::default()
+    let options: FileOptions<ExtendedFileOptions> = FileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .compression_level(Some(level as i64));
 

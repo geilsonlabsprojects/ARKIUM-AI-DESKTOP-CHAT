@@ -115,7 +115,9 @@ export async function dbSelect<T = unknown>(
 ): Promise<T[]> {
   if (!db) return [];
   try {
-    return await db.select<T>(sql, params);
+    const result = await db.select<T>(sql, params);
+    // @tauri-apps/plugin-sql returns T[] but TS may infer Awaited<T>
+    return result as T[];
   } catch (e) {
     console.error("DB select error:", e);
     return [];

@@ -10,6 +10,7 @@ import { clsx } from "clsx";
 import type { Project, FileEntry } from "../types";
 import { useProjectStore } from "../stores/projectStore";
 import { useChatStore } from "../stores/chatStore";
+import { useAppStore } from "../stores/appStore";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -19,7 +20,8 @@ export default function ProjectsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { projects, addProject, deleteProject, updateProject, setActiveProject } = useProjectStore();
-  const { addConversation, addMessage, setActiveConversationId } = useChatStore();
+  const { addConversation, addMessage } = useChatStore();
+  const { setActiveConversationId } = useAppStore();
   const { ai: aiSettings } = useSettingsStore();
 
   const [searchQuery, setSearchQuery] = useState("");
